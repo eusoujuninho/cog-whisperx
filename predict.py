@@ -23,6 +23,7 @@ class Predictor(BasePredictor):
         self.alignment_model, self.metadata = whisperx.load_align_model(language_code=self.language_code, device=self.device)
 
 
+    @staticmethod
     def download_youtube_video(url):
         youtube = YouTube(url)
         video = youtube.streams.first()
@@ -30,6 +31,7 @@ class Predictor(BasePredictor):
 
         return video_file
 
+    @staticmethod
     def extract_audio_from_video(video_file):
         video_clip = VideoFileClip(video_file)
         audio_file = video_file.replace(".mp4", ".mp3")  # Replace .mp4 extension with .mp3
@@ -37,12 +39,13 @@ class Predictor(BasePredictor):
 
         return audio_file
 
+    @staticmethod
     def download_file(url):
         local_filename = url.split('/')[-1]
 
         if "youtube" in url:
-            video_file = download_youtube_video(url)
-            audio_file = extract_audio_from_video(video_file)
+            video_file = Predictor.download_youtube_video(url)
+            audio_file = Predictor.extract_audio_from_video(video_file)
             os.remove(video_file)  # Delete the video file after extracting audio
 
             with tempfile.NamedTemporaryFile(delete=False, suffix="_" + local_filename) as f:
@@ -90,7 +93,7 @@ class Predictor(BasePredictor):
         result = {}
 
         if isinstance(audio, str) and bool(urlparse(audio).netloc):
-            audio = download_file(audio)
+            audio = Predictor.download_file(audio)
 
         result['audio_path'] = audio
 
@@ -104,7 +107,7 @@ class Predictor(BasePredictor):
 
             if align_output:
                 # ensure to use your own library or methods
-                result = self.align(segments, self.alignment_model, self.metadata, str(audio), self.device, return_char_alignments=False)
+                result = whisperx.align(segments, self.alignment_model, self.metadata, audio, self.device, return_char_alignments=False)
 
             if only_text:
                 return ''.join([val.text for val in segments])
