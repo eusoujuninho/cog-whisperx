@@ -3,7 +3,7 @@ import torch
 from cog import BasePredictor, Input, Path
 from datetime import timedelta
 import whisperx
-from whisper.utils import get_writer
+from whisperx.utils import get_writer
 import uuid
 import json
 import requests
