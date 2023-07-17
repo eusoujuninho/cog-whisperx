@@ -20,8 +20,6 @@ build:
     - ffmpeg
     - pytube3
     - moviepy
-    - os_sys
-
   run: 
     - "pip install ipython"
 
