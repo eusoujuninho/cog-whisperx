@@ -3,6 +3,7 @@ import torch
 from cog import BasePredictor, Input, Path
 from datetime import timedelta
 import whisperx
+from whisper.utils import get_writer
 import uuid
 import json
 import requests
@@ -52,8 +53,17 @@ class Predictor(BasePredictor):
 
         """Run a single prediction on the model"""
         with torch.inference_mode():
+            whisper_result = self.model.transcribe(audio, batch_size=batch_size, language="pt")
+            output_directory = '.'
+
             # ensure to use your own library or methods
-            self.result['whisper'] = self.model.transcribe(audio, batch_size=batch_size, language="pt")
+            self.result['whisper'] = whisper_result
+
+            srt_writer = get_writer("srt", output_directory)
+            srt_writer(whisper_result, 'test.srt')
+
+            json_writer = get_writer("json", output_directory)
+            json_writer(whisper_result, 'test.json')
 
             if align_output:
                 # ensure to use your own library or methods
