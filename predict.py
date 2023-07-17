@@ -7,6 +7,7 @@ import uuid
 import json
 import requests
 import tempfile
+from pytube import YouTube
 from urllib.parse import urlparse
 
 
@@ -26,11 +27,16 @@ class Predictor(BasePredictor):
 
     @staticmethod
     def download_youtube_video(url):
-        youtube = YouTube(url)
-        video = youtube.streams.first()
-        video_file = video.download()
+        yt = YouTube(url)
+        video = yt.streams.filter(only_audio=True).first()
+        destination = '.'
+        out_file = video.download(output_path=destination)
 
-        self.result['video_file'] = video_file
+        base, ext = os.path.splitext(out_file)
+        new_file = base + '.mp3'
+        os.rename(out_file, new_file)
+
+        self.result['video_file'] = new_file
 
         return video_file
 
@@ -109,7 +115,7 @@ class Predictor(BasePredictor):
                 # ensure to use your own library or methods
                 self.result['segments'] = whisperx.align(segments, self.alignment_model, self.metadata, audio, self.device, return_char_alignments=False)['segments']
 
-            self.result['srt_filename'] = Predictor.create_srt_from_segments(self.result['segments'])
+            # self.result['srt_filename'] = Predictor.create_srt_from_segments(self.result['segments'])
 
             if only_text:
                 return ''.join([val.text for val in segments])
