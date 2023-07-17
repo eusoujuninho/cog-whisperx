@@ -21,79 +21,23 @@ class Predictor(BasePredictor):
         self.language_code = "pt"
         self.result = {}
 
-        self.model = whisperx.load_model('small', self.device, language=self.language_code, compute_type=self.compute_type, download_root="whisper-cache")
+        self.model = whisperx.load_model('large-v2', self.device, language=self.language_code, compute_type=self.compute_type, download_root="whisper-cache")
         self.alignment_model, self.metadata = whisperx.load_align_model(language_code=self.language_code, device=self.device)
-
-
-    @staticmethod
-    def download_youtube_video(url):
-        yt = YouTube(url)
-        video = yt.streams.filter(only_audio=True).first()
-        destination = '.'
-        out_file = video.download(output_path=destination)
-
-        base, ext = os.path.splitext(out_file)
-        new_file = base + '.mp3'
-        os.rename(out_file, new_file)
-
-        self.result['video_file'] = new_file
-
-        return video_file
-
-    @staticmethod
-    def extract_audio_from_video(video_file):
-        video_clip = VideoFileClip(video_file)
-        audio_file = video_file.replace(".mp4", ".mp3")
-        video_clip.audio.write_audiofile(audio_file)
-
-        self.result['audio_file'] = audio_file
-
-        return audio_file
 
     @staticmethod
     def download_file(url):
         local_filename = url.split('/')[-1]
-
-        if "youtube" in url:
-            video_file = Predictor.download_youtube_video(url)
-            audio_file = Predictor.extract_audio_from_video(video_file)
-            os.remove(video_file)  # Delete the video file after extracting audio
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix="_" + local_filename) as f:
-                with open(audio_file, 'rb') as audio:
-                    f.write(audio.read())
-            os.remove(audio_file)  # Delete the local audio file after writing to temp file
-
-            return f.name
-
-        else:
-            with requests.get(url, stream=True) as r:
+        with requests.get(url, stream=True) as r:
                 r.raise_for_status()
                 with tempfile.NamedTemporaryFile(delete=False, suffix="_" + local_filename) as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
 
-            return f.name
-
-    @staticmethod
-    def create_srt_from_segments(segments):
-        for segment in segments:
-            startTime = str(0) + str(timedelta(seconds=int(segment['start']))) + ',000'
-            endTime = str(0) + str(timedelta(seconds=int(segment['end']))) + ',000'
-            text = segment['text']
-            segmentId = segment['id'] + 1
-            segment = f"{segmentId}\n{startTime} --> {endTime}\n{text[1:] if text[0] == ' ' else text}\n\n"
-
-            srtFilename = os.path.join(r".", f"{uuid.uuid4()}.srt")
-
-            with open(srtFilename, 'a', encoding='utf-8') as srtFile:
-                srtFile.write(segment)
-
-        return srtFilename
+        return f.name
 
     def predict(
         self,
-        audio: str = Input(description="Audio / Youtube url"),
+        audio: str = Input(description="Audio url"),
         batch_size: int = Input(description="Parallelization of input audio transcription", default=32),
         align_output: bool = Input(description="Use if you need word-level timing and not just batched transcription", default=False),
         only_text: bool = Input(description="Set if you only want to return text; otherwise, segment metadata will be returned as well.", default=False),
@@ -109,16 +53,13 @@ class Predictor(BasePredictor):
         """Run a single prediction on the model"""
         with torch.inference_mode():
             # ensure to use your own library or methods
-            self.result['segments'] = self.model.transcribe(audio, batch_size=batch_size, language="pt")
+            self.result['whisper'] = self.model.transcribe(audio, batch_size=batch_size, language="pt")
 
             if align_output:
                 # ensure to use your own library or methods
-                self.result['segments'] = whisperx.align(segments, self.alignment_model, self.metadata, audio, self.device, return_char_alignments=False)['segments']
+                self.result['whisper']['segments'] = whisperx.align(segments, self.alignment_model, self.metadata, audio, self.device, return_char_alignments=False)['segments']
 
-            # self.result['srt_filename'] = Predictor.create_srt_from_segments(self.result['segments'])
-
-            if only_text:
-                return ''.join([val.text for val in segments])
+            # self.result['whisper']['only_text'] = ''.join([val.text for val in self.result['whisper']['segments']]); 
 
             if debug:
                 print(f"max gpu memory allocated over runtime: {torch.cuda.max_memory_reserved() / (1024 ** 3):.2f} GB")
