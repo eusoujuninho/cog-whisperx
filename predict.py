@@ -20,6 +20,7 @@ class Predictor(BasePredictor):
     def predict(
         self,
         audio: Path = Input(description="Audio file"),
+        language: Path = Input(description = "Audio language code", default="pt"),
         batch_size: int = Input(description="Parallelization of input audio transcription", default=32),
         align_output: bool = Input(description="Use if you need word-level timing and not just batched transcription", default=False),
         only_text: bool = Input(description="Set if you only want to return text; otherwise, segment metadata will be returned as well.", default=False),
@@ -27,7 +28,7 @@ class Predictor(BasePredictor):
     ) -> str:
         """Run a single prediction on the model"""
         with torch.inference_mode():
-            result = self.model.transcribe(str(audio), batch_size=batch_size) 
+            result = self.model.transcribe(str(audio), batch_size=batch_size, language=language) 
             # result is dict w/keys ['segments', 'language']
             # segments is a list of dicts,each dict has {'text': <text>, 'start': <start_time_msec>, 'end': <end_time_msec> }
             if align_output:
@@ -42,5 +43,5 @@ class Predictor(BasePredictor):
                 return ''.join([val.text for val in result['segments']])
             if debug:
                 print(f"max gpu memory allocated over runtime: {torch.cuda.max_memory_reserved() / (1024 ** 3):.2f} GB")
-        return json.dumps(result['segments'])
+        return json.dumps(result)
 
