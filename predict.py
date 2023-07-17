@@ -19,7 +19,7 @@ class Predictor(BasePredictor):
         self.compute_type = "float16"
         self.language_code = "pt"
 
-        self.model = whisperx.load_model('small', self.device, language=self.language_code, compute_type=self.compute_type)
+        self.model = whisperx.load_model('small', self.device, language=self.language_code, compute_type=self.compute_type, download_root="whisper-cache")
         self.alignment_model, self.metadata = whisperx.load_align_model(language_code=self.language_code, device=self.device)
 
 
@@ -79,7 +79,7 @@ class Predictor(BasePredictor):
 
     def predict(
         self,
-        audio: Path = Input(description="Audio file"),
+        audio: str = Input(description="Audio / Youtube url"),
         batch_size: int = Input(description="Parallelization of input audio transcription", default=32),
         align_output: bool = Input(description="Use if you need word-level timing and not just batched transcription", default=False),
         only_text: bool = Input(description="Set if you only want to return text; otherwise, segment metadata will be returned as well.", default=False),
