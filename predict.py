@@ -2,8 +2,13 @@ import os
 import torch
 from cog import BasePredictor, Input, Path
 from datetime import timedelta
+import whisperx
 import uuid
 import json
+import requests
+import tempfile
+from urllib.parse import urlparse
+
 
 class Predictor(BasePredictor):
     def setup(self):
@@ -14,9 +19,47 @@ class Predictor(BasePredictor):
         self.compute_type = "float16"
         self.language_code = "pt"
 
-        self.model = self.load_model(model_name, self.device, language=self.language_code, compute_type=self.compute_type)
-        self.alignment_model, self.metadata = self.load_align_model(language_code=self.language_code, device=self.device)
+        self.model = whisperx.load_model('small', self.device, language=self.language_code, compute_type=self.compute_type)
+        self.alignment_model, self.metadata = whisperx.load_align_model(language_code=self.language_code, device=self.device)
 
+
+    def download_youtube_video(url):
+        youtube = YouTube(url)
+        video = youtube.streams.first()
+        video_file = video.download()
+
+        return video_file
+
+    def extract_audio_from_video(video_file):
+        video_clip = VideoFileClip(video_file)
+        audio_file = video_file.replace(".mp4", ".mp3")  # Replace .mp4 extension with .mp3
+        video_clip.audio.write_audiofile(audio_file)
+
+        return audio_file
+
+    def download_file(url):
+        local_filename = url.split('/')[-1]
+
+        if "youtube" in url:
+            video_file = download_youtube_video(url)
+            audio_file = extract_audio_from_video(video_file)
+            os.remove(video_file)  # Delete the video file after extracting audio
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix="_" + local_filename) as f:
+                with open(audio_file, 'rb') as audio:
+                    f.write(audio.read())
+            os.remove(audio_file)  # Delete the local audio file after writing to temp file
+
+            return f.name
+
+        else:
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                with tempfile.NamedTemporaryFile(delete=False, suffix="_" + local_filename) as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+            return f.name
 
     @staticmethod
     def create_srt_from_segments(segments):
@@ -25,7 +68,7 @@ class Predictor(BasePredictor):
             endTime = str(0) + str(timedelta(seconds=int(segment['end']))) + ',000'
             text = segment['text']
             segmentId = segment['id'] + 1
-            segment = f"{segmentId}\n{startTime} --> {endTime}\n{text[1:] if text[0] is ' ' else text}\n\n"
+            segment = f"{segmentId}\n{startTime} --> {endTime}\n{text[1:] if text[0] == ' ' else text}\n\n"
 
             srtFilename = os.path.join(r".", f"{uuid.uuid4()}.srt")
 
@@ -36,7 +79,6 @@ class Predictor(BasePredictor):
 
     def predict(
         self,
-        model_name: str = Input(description='large-v2'),
         audio: Path = Input(description="Audio file"),
         batch_size: int = Input(description="Parallelization of input audio transcription", default=32),
         align_output: bool = Input(description="Use if you need word-level timing and not just batched transcription", default=False),
@@ -45,11 +87,17 @@ class Predictor(BasePredictor):
     ) -> str:
         # ensure to use your own library or methods
         
+        result = {}
+
+        if isinstance(audio, str) and bool(urlparse(audio).netloc):
+            audio = download_file(audio)
+
+        result['audio_path'] = audio
 
         """Run a single prediction on the model"""
         with torch.inference_mode():
             # ensure to use your own library or methods
-            result = self.model.transcribe(str(audio), batch_size=batch_size, language=self.language_code)
+            result = self.model.transcribe(audio, batch_size=batch_size, language="pt")
 
             segments = result['segments']
             result['srt_filename'] = Predictor.create_srt_from_segments(segments)
