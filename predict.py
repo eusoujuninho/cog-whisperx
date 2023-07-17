@@ -33,7 +33,7 @@ class Predictor(BasePredictor):
             with open(srtFilename, 'a', encoding='utf-8') as srtFile:
                 srtFile.write(segment)
 
-    return srtFilename
+        return srtFilename
 
 
     def predict(
