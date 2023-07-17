@@ -18,6 +18,7 @@ class Predictor(BasePredictor):
         os.environ['TORCH_HOME'] = '/src/torch_models'
         self.compute_type = "float16"
         self.language_code = "pt"
+        self.result = {}
 
         self.model = whisperx.load_model('small', self.device, language=self.language_code, compute_type=self.compute_type, download_root="whisper-cache")
         self.alignment_model, self.metadata = whisperx.load_align_model(language_code=self.language_code, device=self.device)
@@ -29,13 +30,17 @@ class Predictor(BasePredictor):
         video = youtube.streams.first()
         video_file = video.download()
 
+        self.result['video_file'] = video_file
+
         return video_file
 
     @staticmethod
     def extract_audio_from_video(video_file):
         video_clip = VideoFileClip(video_file)
-        audio_file = video_file.replace(".mp4", ".mp3")  # Replace .mp4 extension with .mp3
+        audio_file = video_file.replace(".mp4", ".mp3")
         video_clip.audio.write_audiofile(audio_file)
+
+        self.result['audio_file'] = audio_file
 
         return audio_file
 
@@ -89,25 +94,22 @@ class Predictor(BasePredictor):
         debug: bool = Input(description="Print out memory usage information.", default=False)
     ) -> str:
         # ensure to use your own library or methods
-        
-        result = {}
 
         if isinstance(audio, str) and bool(urlparse(audio).netloc):
             audio = Predictor.download_file(audio)
 
-        result['audio_path'] = audio
+        self.result['audio_path'] = audio
 
         """Run a single prediction on the model"""
         with torch.inference_mode():
             # ensure to use your own library or methods
-            result = self.model.transcribe(audio, batch_size=batch_size, language="pt")
-
-            segments = result['segments']
-            result['srt_filename'] = Predictor.create_srt_from_segments(segments)
+            self.result['segments'] = self.model.transcribe(audio, batch_size=batch_size, language="pt")
 
             if align_output:
                 # ensure to use your own library or methods
-                result = whisperx.align(segments, self.alignment_model, self.metadata, audio, self.device, return_char_alignments=False)
+                self.result['segments'] = whisperx.align(segments, self.alignment_model, self.metadata, audio, self.device, return_char_alignments=False)['segments']
+
+            self.result['srt_filename'] = Predictor.create_srt_from_segments(self.result['segments'])
 
             if only_text:
                 return ''.join([val.text for val in segments])
@@ -115,4 +117,4 @@ class Predictor(BasePredictor):
             if debug:
                 print(f"max gpu memory allocated over runtime: {torch.cuda.max_memory_reserved() / (1024 ** 3):.2f} GB")
 
-        return json.dumps(result)
+        return json.dumps(self.result)
